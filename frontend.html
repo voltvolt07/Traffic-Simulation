@@ -1,0 +1,805 @@
+html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Micro-Simulation 2D Map</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-dark: #0f172a;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-color: #f8fafc;
+            --road-color: #334155;
+            --road-line: #cbd5e1;
+            --car-regular: linear-gradient(135deg, #0ea5e9, #38bdf8);
+            --car-emergency: linear-gradient(135deg, #dc2626, #ef4444);
+            --light-green: #22c55e;
+            --light-red: #ef4444;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0 0 1rem 0;
+            font-size: 2.5rem;
+            text-align: center;
+        }
+
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            padding: 1rem 2rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 2rem;
+        }
+
+        textarea {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 1rem;
+            color: #38bdf8;
+            font-family: monospace;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 1rem;
+        }
+
+        button {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        /* 2D MAP LAYOUT */
+        #visualizer {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 16px;
+            border: 2px solid var(--glass-border);
+            overflow: auto; /* Allow seeing dynamic roads */
+            box-shadow: inset 0 10px 30px rgba(0, 0, 0, 0.8);
+            margin-top: 2rem;
+        }
+
+        .map-road {
+            position: absolute;
+            background: #1e293b;
+            border: 3px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: rgba(255, 255, 255, 0.05);
+            font-size: 1.2rem;
+            z-index: 1;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        /* Center Line for Roads */
+        .map-road::after {
+            content: "";
+            position: absolute;
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            z-index: 0;
+        }
+        .map-road:not([style*="height: 60px"])::after { /* Vertical */
+            height: 100%; width: 0; left: 50%;
+        }
+        .map-road[style*="height: 60px"]::after { /* Horizontal */
+            width: 100%; height: 0; top: 50%;
+        }
+
+        /* PREMIUM CAR STYLING */
+        .map-car {
+            position: absolute;
+            width: 32px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 800;
+            z-index: 10;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .car-emergency {
+            background: #ef4444;
+            box-shadow: 0 0 15px #ef4444;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* Intersections */
+        .intersection-box {
+            position: absolute;
+            background: rgba(71, 85, 105, 0.8);
+            z-index: 5;
+            border: 3px solid #fbbf24;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+            border-radius: 4px;
+        }
+
+        /* Traffic Lights */
+        .map-light {
+            position: absolute;
+            width: 14px;
+            height: 32px;
+            background: #111;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-evenly;
+            z-index: 20;
+            padding: 2px;
+            border: 1px solid #333;
+        }
+
+        .map-light .light {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #333;
+        }
+
+        .map-light .light.red.active {
+            background: var(--light-red);
+            box-shadow: 0 0 10px var(--light-red);
+        }
+
+        .map-light .light.green.active {
+            background: var(--light-green);
+            box-shadow: 0 0 10px var(--light-green);
+        }
+
+        #light-1 {
+            top: 185px;
+            left: 380px;
+        }
+
+        /* Controls Road 1 */
+        #light-2 {
+            top: 195px;
+            left: 465px;
+            transform: rotate(90deg);
+        }
+
+        /* Controls Road 2 */
+        #light-3 {
+            top: 185px;
+            left: 880px;
+        }
+
+        /* Controls Road 3 */
+
+        /* Cars */
+        .map-car {
+            position: absolute;
+            border-radius: 4px;
+            box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #fff;
+            z-index: 10;
+            transition: all 0.4s cubic-bezier(0.2, 0, 0.2, 1);
+        }
+
+        .car-regular {
+            background: var(--car-regular);
+        }
+
+        .car-emergency {
+            background: var(--car-emergency);
+            animation: strobe 0.3s infinite alternate;
+        }
+
+        @keyframes strobe {
+            0% {
+                box-shadow: 0 0 15px #ef4444, inset 0 0 5px #fff;
+            }
+
+            100% {
+                box-shadow: 0 0 30px #ef4444, inset 0 0 15px #fff;
+            }
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1rem;
+            border-top: 1px solid var(--glass-border);
+            padding-top: 1rem;
+        }
+
+        input[type="range"] {
+            flex-grow: 1;
+            accent-color: #38bdf8;
+        }
+
+        /* METRICS STYLING */
+        #metrics-dashboard {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 1000px;
+            margin-top: 2rem;
+        }
+
+        .metric-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            padding: 1.5rem;
+            border-radius: 16px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            border-color: #38bdf8;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Dynamic Traffic Flow and Congestion Simulation System</h1>
+    </header>
+
+    <div class="glass-card">
+        <h3
+            style="margin-top: 0; color: #38bdf8; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.5rem;">
+            Simulation Configuration</h3>
+
+        <form id="simForm">
+            <!-- Global Settings -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div>
+                    <label style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.3rem;">Time
+                        Steps:</label>
+                    <input type="number" id="input-steps" value="30"
+                        style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0.5rem; color: #fff;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.3rem;">Number of
+                        Roads:</label>
+                    <input type="number" id="input-roads" value="6" min="1"
+                        style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0.5rem; color: #fff;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.3rem;">Number of
+                        Intersections:</label>
+                    <input type="number" id="input-inters" value="2" min="1"
+                        style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0.5rem; color: #fff;">
+                </div>
+            </div>
+
+            <!-- Dynamic Sections Containers -->
+            <div id="roads-container" style="margin-bottom: 1rem;"></div>
+            <div id="inters-container" style="margin-bottom: 1rem;"></div>
+
+            <div style="margin-bottom: 1rem; border-top: 1px solid var(--glass-border); padding-top: 1rem;">
+                <label style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.3rem;">Total
+                    Vehicles:</label>
+                <input type="number" id="input-vehs" value="2" min="1"
+                    style="width: 100px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 4px; padding: 0.5rem; color: #fff; margin-bottom: 1rem;">
+                <div id="vehs-container"></div>
+            </div>
+
+            <button type="button" id="runSimBtn" style="width: 100%; margin-top: 1rem;">🚀 Launch Simulation
+                Engine</button>
+        </form>
+
+        <div class="playback-controls" style="display: none;" id="playbackContainer">
+            <button id="playBtn">Play</button>
+            <input type="range" id="scrubber" min="0" max="1" value="0" step="1">
+            <span style="font-family: monospace; font-size: 1.2rem; color: #cbd5e1;">Time: <span
+                    id="timeDisplay">0</span></span>
+        </div>
+    </div>
+
+    <!-- DYNAMIC MAP VISUALIZER -->
+    <div id="visualizer">
+        <div id="roads-layer"></div>
+        <div id="inters-layer"></div>
+        <div id="lights-layer"></div>
+        <div id="cars-layer"></div>
+    </div>
+
+    <!-- METRICS DASHBOARD -->
+    <div id="metrics-dashboard" style="display: none;">
+        <div class="metric-card">
+            <span class="metric-value" id="metric-completed">0</span>
+            <span class="metric-label">Vehicles Completed</span>
+        </div>
+        <div class="metric-card">
+            <span class="metric-value" id="metric-travel">0</span>
+            <span class="metric-label">Avg Travel Time</span>
+        </div>
+        <div class="metric-card">
+            <span class="metric-value" id="metric-stopped">0</span>
+            <span class="metric-label">Avg Stopped Time</span>
+        </div>
+        <div class="metric-card">
+            <span class="metric-value" id="metric-queue">0</span>
+            <span class="metric-label">Max Queue Length</span>
+        </div>
+    </div>
+
+    <script>
+        let simData = null;
+        let simSteps = [];
+        let simMetrics = null;
+        let isPlaying = false;
+        let currentTimeStep = 0;
+        let playbackInterval = null;
+
+        // --- DYNAMIC FORM LOGIC ---
+        function updateRoadFields() {
+            const count = parseInt(document.getElementById('input-roads').value) || 6;
+            const container = document.getElementById('roads-container');
+            container.innerHTML = `<h4 style="color: #94a3b8; font-size: 0.9rem; margin: 1rem 0 0.5rem 0;">Road Settings</h4>`;
+
+            if (count > 0) {
+                container.innerHTML += `
+                    <div style="display: grid; grid-template-columns: 80px 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.7rem; color: #64748b; font-weight: bold; text-align: center;">
+                        <div style="text-align: center;">ID</div><div>Capacity</div><div>Threshold</div>
+                    </div>`;
+            }
+
+            for (let i = 1; i <= count; i++) {
+                container.innerHTML += `
+                    <div style="display: grid; grid-template-columns: 80px 1fr 1fr; gap: 0.5rem; margin-bottom: 0.4rem; align-items: center;">
+                        <span style="font-size: 0.8rem; color: #38bdf8; font-weight: bold; text-align: center;">Road ${i}</span>
+                        <input type="number" class="road-cap" placeholder="Cap" value="100" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="number" class="road-thr" placeholder="Thr" value="10" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                    </div>`;
+            }
+        }
+
+        function updateInterFields() {
+            const count = parseInt(document.getElementById('input-inters').value) || 0;
+            const container = document.getElementById('inters-container');
+            container.innerHTML = `<h4 style="color: #94a3b8; font-size: 0.9rem; margin: 1rem 0 0.5rem 0;">Intersection Routing</h4>`;
+
+            // Labels Header (ID is narrower, others take remaining space)
+            container.innerHTML += `
+                <div style="display: grid; grid-template-columns: 120px repeat(4, 1fr); gap: 0.5rem; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.7rem; color: #64748b; font-weight: bold; text-align: center;">
+                    <div style="text-align: center;">ID</div><div>NUM INCOMING</div><div>IN IDs</div><div>NUM OUTGOING</div><div>OUT IDs</div>
+                </div>`;
+
+            const defaultInput = `2 6
+1 100 0
+2 100 0
+3 100 0
+4 100 0
+5 100 0
+6 100 0
+1 3 1 5 6 2 4 3 20 20
+2 1 3 1 6 20 20
+2
+1 1 3 0 0 10.0
+2 3 1 0 0 10.0`;
+
+            const defaults = [
+                { in_c: 2, in_ids: "1 6", out_c: 2, out_ids: "4 3" }, // Ix 1
+                { in_c: 1, in_ids: "3", out_c: 1, out_ids: "6" }     // Ix 2
+            ];
+
+            for (let i = 1; i <= count; i++) {
+                const def = defaults[i - 1] || { in_c: 1, in_ids: "1", out_c: 0, out_ids: "" };
+                container.innerHTML += `
+                    <div style="display: grid; grid-template-columns: 120px repeat(4, 1fr); gap: 0.5rem; margin-bottom: 0.4rem; align-items: center;">
+                        <span style="font-size: 0.8rem; color: #38bdf8; font-weight: bold; text-align: center;">Intersection ${i}</span>
+                        <input type="number" class="in-count" value="${def.in_c}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="text" class="in-ids" value="${def.in_ids}" placeholder="e.g. 1 2" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="number" class="out-count" value="${def.out_c}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="text" class="out-ids" value="${def.out_ids}" placeholder="e.g. 3" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                    </div>`;
+            }
+        }
+
+        function updateVehFields() {
+            const count = parseInt(document.getElementById('input-vehs').value) || 0;
+            const container = document.getElementById('vehs-container');
+            container.innerHTML = "";
+
+            if (count > 0) {
+                container.innerHTML += `
+                    <div style="display: grid; grid-template-columns: 60px 1fr 1fr 1fr 1fr; gap: 0.4rem; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.7rem; color: #64748b; font-weight: bold; text-align: center;">
+                        <div>ID</div><div>Type (0-Normal/1-Emergency)</div><div>Entry Time</div><div>Start Road</div><div>Destination Road</div>
+                    </div>`;
+            }
+
+            for (let i = 1; i <= count; i++) {
+                container.innerHTML += `
+                    <div style="display: grid; grid-template-columns: 60px 1fr 1fr 1fr 1fr; gap: 0.4rem; margin-bottom: 0.4rem; align-items: center;">
+                        <span style="font-size: 0.8rem; color: #38bdf8; font-weight: bold; text-align: center;">V${i}</span>
+                        <input type="number" class="v-type" value="${i === 2 ? 1 : 0}" title="0=Regular, 1=Emergency" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="number" class="v-time" value="${i === 2 ? 5 : 0}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="number" class="v-road" value="${i === 2 ? 6 : 1}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                        <input type="number" class="v-dest" value="${i === 2 ? 4 : 3}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.3rem; color: #fff; border-radius: 4px; text-align: center;">
+                    </div>`;
+            }
+        }
+
+        document.getElementById('input-roads').addEventListener('input', updateRoadFields);
+        document.getElementById('input-inters').addEventListener('input', updateInterFields);
+        document.getElementById('input-vehs').addEventListener('input', updateVehFields);
+
+        // Init fields on load
+        window.addEventListener('DOMContentLoaded', () => {
+            updateRoadFields();
+            updateInterFields();
+            updateVehFields();
+        });
+
+        document.getElementById('runSimBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('runSimBtn');
+            btn.disabled = true;
+            btn.textContent = "⚙️ Engine Calculating...";
+
+            // Construct the input string from form fields
+            let inputStr = "";
+            inputStr += document.getElementById('input-steps').value + " ";
+            inputStr += document.getElementById('input-roads').value + " ";
+            inputStr += document.getElementById('input-inters').value + " ";
+
+            document.querySelectorAll('.road-cap').forEach((el, i) => {
+                inputStr += el.value + " " + document.querySelectorAll('.road-thr')[i].value + " ";
+            });
+
+            document.querySelectorAll('.in-count').forEach((el, i) => {
+                inputStr += el.value + " " +
+                    document.querySelectorAll('.in-ids')[i].value + " " +
+                    document.querySelectorAll('.out-count')[i].value + " " +
+                    document.querySelectorAll('.out-ids')[i].value + " ";
+            });
+
+            inputStr += document.getElementById('input-vehs').value + " ";
+
+            document.querySelectorAll('.v-type').forEach((el, i) => {
+                inputStr += el.value + " " +
+                    document.querySelectorAll('.v-time')[i].value + " " +
+                    document.querySelectorAll('.v-road')[i].value + " " +
+                    document.querySelectorAll('.v-dest')[i].value + " ";
+            });
+
+            try {
+                const response = await fetch('/run_sim', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ input: inputStr.trim() })
+                });
+
+                if (response.ok) {
+                    const rawData = await response.json();
+                    console.log("Raw Simulation Data:", rawData);
+                    simData = rawData;
+                    simSteps = rawData.steps || [];
+                    simMetrics = rawData.metrics || null;
+
+                    btn.textContent = "✅ Success! (Ready to Play)";
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.textContent = "🚀 Launch Simulation Engine";
+                    }, 2000);
+                    
+                    try {
+                        updateMetricsUI();
+                        initVisualizer();
+                    } catch (visErr) {
+                        console.error("Visualizer Error:", visErr);
+                        alert("Visualizer Error: " + visErr.message + "\nCheck your routing logic!");
+                    }
+                } else {
+                    const errorMsg = await response.text();
+                    alert("Simulation Engine Error: " + errorMsg);
+                    btn.disabled = false;
+                    btn.textContent = "🚀 Launch Simulation Engine";
+                }
+            } catch (err) {
+                console.error("Network Error:", err);
+                alert("Network Error: Could not reach server.py. Ensure it is running on port 8080.");
+                btn.disabled = false;
+                btn.textContent = "🚀 Launch Simulation Engine";
+            }
+        });
+
+        // --- CLASSIC PREMIUM VISUALIZER (WITH DYNAMIC BRAIN) ---
+        function initVisualizer() {
+            const roadsLayer = document.getElementById('roads-layer');
+            const intersLayer = document.getElementById('inters-layer');
+            const lightsLayer = document.getElementById('lights-layer');
+            const playbackContainer = document.getElementById('playbackContainer');
+            
+            roadsLayer.innerHTML = "";
+            intersLayer.innerHTML = "";
+            lightsLayer.innerHTML = "";
+            document.getElementById('cars-layer').innerHTML = "";
+            playbackContainer.style.display = 'flex';
+
+            const initialState = simSteps[0];
+            
+            // Show metrics dashboard
+            document.getElementById('metrics-dashboard').style.display = 'grid';
+
+            // 1. Create Roads with Classic Positioning
+            initialState.roads.forEach((road) => {
+                const roadEl = document.createElement('div');
+                roadEl.className = 'map-road';
+                roadEl.id = `road-dom-${road.id}`;
+                
+                let left, top, width, height, isVertical = false;
+
+                // Restore Classic T-Junction Coordinates with Two-Way Support
+                if (road.id === 1) { 
+                    left = 0; top = 220; width = 400; height = 60; 
+                } else if (road.id === 4) { // Return of Road 1
+                    left = 0; top = 280; width = 400; height = 60; 
+                } else if (road.id === 2) { 
+                    left = 400; top = 0; width = 60; height = 220; isVertical = true;
+                } else if (road.id === 5) { // Return of Road 2
+                    left = 460; top = 0; width = 60; height = 220; isVertical = true;
+                } else if (road.id === 3) { 
+                    left = 520; top = 220; width = 440; height = 60;
+                } else if (road.id === 6) { // Return of Road 3
+                    left = 520; top = 280; width = 440; height = 60;
+                } else if (road.id === 7) { // J1 -> South (Outgoing)
+                    left = 400; top = 340; width = 60; height = 300; isVertical = true;
+                } else if (road.id === 8) { // South -> J1 (Incoming)
+                    left = 460; top = 340; width = 60; height = 300; isVertical = true;
+                } else {
+                    left = 50; top = 650 + (road.id * 80); width = 300; height = 60;
+                }
+
+                roadEl.style.left = left + "px";
+                roadEl.style.top = top + "px";
+                roadEl.style.width = width + "px";
+                roadEl.style.height = height + "px";
+                
+                const isReverse = [4, 5, 6, 8].includes(road.id);
+                roadEl.innerHTML = `<span style="opacity:0.6; color:#cbd5e1; font-size:0.8rem; letter-spacing:3px;">ROAD ${road.id}</span>`;
+                if (isVertical) {
+                    roadEl.style.flexDirection = "column";
+                    roadEl.innerHTML = `<span style="opacity:0.6; color:#cbd5e1; font-size:0.8rem; letter-spacing:3px; transform:rotate(90deg);">ROAD ${road.id}</span>`;
+                }
+
+                roadsLayer.appendChild(roadEl);
+
+                // Add Traffic Lights in Classic Positions (Adjusted for 120x120 Hub)
+                const lightEl = document.createElement('div');
+                lightEl.className = 'map-light';
+                lightEl.id = `light-dom-${road.id}`;
+                lightEl.innerHTML = `<div class="light red"></div><div class="light green"></div>`;
+                
+                if (road.id === 1) { lightEl.style.left = "380px"; lightEl.style.top = "185px"; }
+                else if (road.id === 4) { lightEl.style.left = "380px"; lightEl.style.top = "345px"; lightEl.style.transform = "rotate(180deg)"; }
+                else if (road.id === 2) { lightEl.style.left = "365px"; lightEl.style.top = "190px"; lightEl.style.transform = "rotate(90deg)"; }
+                else if (road.id === 5) { lightEl.style.left = "525px"; lightEl.style.top = "190px"; lightEl.style.transform = "rotate(270deg)"; }
+                else if (road.id === 3) { lightEl.style.left = "525px"; lightEl.style.top = "185px"; }
+                else if (road.id === 6) { lightEl.style.left = "525px"; lightEl.style.top = "345px"; lightEl.style.transform = "rotate(180deg)"; }
+                else if (road.id === 7) { lightEl.style.left = "400px"; lightEl.style.top = "640px"; lightEl.style.transform = "rotate(180deg)"; }
+                else if (road.id === 8) { lightEl.style.left = "460px"; lightEl.style.top = "345px"; lightEl.style.transform = "rotate(0deg)"; }
+                else {
+                    lightEl.style.left = (left + width - 30) + "px";
+                    lightEl.style.top = (top - 35) + "px";
+                }
+                lightsLayer.appendChild(lightEl);
+            });
+
+            // 2. Create Intersections with Classic Positioning
+            initialState.intersections.forEach((ix) => {
+                const ixEl = document.createElement('div');
+                ixEl.className = 'intersection-box';
+                ixEl.id = `ix-dom-${ix.id}`;
+                
+                let x, y, w = 120, h = 120;
+                if (ix.id === 1) { x = 400; y = 220; }
+                else if (ix.id === 2) { x = 960; y = 220; } 
+                else if (ix.id === 3) { x = 400; y = -120; } // North Slot
+                else if (ix.id === 4) { x = 400; y = 640; }  // South Slot
+                else if (ix.id === 5) { x = -120; y = 220; } // West Slot
+                else { x = 400 + (ix.id * 100); y = 800; w = 60; h = 60; }
+
+                ixEl.style.left = x + "px";
+                ixEl.style.top = y + "px";
+                ixEl.style.width = w + "px";
+                ixEl.style.height = h + "px";
+                ixEl.innerHTML = `<span style="font-size:0.6rem; color:#fbbf24; position:absolute; top:-15px;">J${ix.id}</span>`;
+                intersLayer.appendChild(ixEl);
+            });
+
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = simSteps.length - 1;
+            scrubber.value = 0;
+            currentTimeStep = 0;
+            if (isPlaying) togglePlayback();
+            scrubber.addEventListener('input', (e) => {
+                currentTimeStep = parseInt(e.target.value);
+                renderState(currentTimeStep);
+            });
+
+            const playBtn = document.getElementById('playBtn');
+            const newPlayBtn = playBtn.cloneNode(true);
+            playBtn.parentNode.replaceChild(newPlayBtn, playBtn);
+            newPlayBtn.addEventListener('click', togglePlayback);
+            
+            renderState(0);
+        }
+
+        function updateMetricsUI() {
+            if (!simMetrics) return;
+            document.getElementById('metric-completed').textContent = simMetrics.total_completed;
+            document.getElementById('metric-travel').textContent = simMetrics.avg_travel_time.toFixed(1) + "s";
+            document.getElementById('metric-stopped').textContent = simMetrics.avg_stopped_time.toFixed(1) + "s";
+            document.getElementById('metric-queue').textContent = simMetrics.max_queue_length;
+        }
+
+        function togglePlayback() {
+            const btn = document.getElementById('playBtn');
+            if (isPlaying) {
+                isPlaying = false;
+                btn.textContent = "Play";
+                clearInterval(playbackInterval);
+            } else {
+                isPlaying = true;
+                btn.textContent = "Pause";
+                playbackInterval = setInterval(() => {
+                    currentTimeStep++;
+                    if (currentTimeStep >= simSteps.length) {
+                        togglePlayback();
+                        currentTimeStep = 0;
+                    }
+                    document.getElementById('scrubber').value = currentTimeStep;
+                    renderState(currentTimeStep); 
+                }, 400);
+            }
+        }
+
+        function renderState(t) {
+            if (!simSteps || !simSteps[t]) return;
+            const state = simSteps[t];
+            document.getElementById('timeDisplay').innerText = t;
+
+            // Update Lights
+            state.roads.forEach(road => {
+                const lightEl = document.getElementById(`light-dom-${road.id}`);
+                if (lightEl) {
+                    const red = lightEl.querySelector('.red');
+                    const green = lightEl.querySelector('.green');
+                    if (road.signal === 0) { red.classList.add('active'); green.classList.remove('active'); }
+                    else { red.classList.remove('active'); green.classList.add('active'); }
+                }
+            });
+
+            // Update Cars
+            const carsLayer = document.getElementById('cars-layer');
+            const currentCarIds = [];
+
+            const renderVehicles = (container, locationType) => {
+                const containerEl = document.getElementById(`${locationType === 'road' ? 'road-dom-' : 'ix-dom-'}${container.id}`);
+                if (!containerEl) return;
+                
+                const cLeft = parseInt(containerEl.style.left) || 0;
+                const cTop = parseInt(containerEl.style.top) || 0;
+                const cW = parseInt(containerEl.style.width) || 0;
+                const cH = parseInt(containerEl.style.height) || 0;
+                const isVertical = (cH > cW);
+                const isReverse = [4, 5, 6, 8].includes(container.id) && locationType === 'road';
+
+                container.vehicles.forEach((v, index) => {
+                    const carDomId = `car-${v.id}`;
+                    currentCarIds.push(carDomId);
+                    let carEl = document.getElementById(carDomId);
+                    if (!carEl) {
+                        carEl = document.createElement('div');
+                        carEl.id = carDomId;
+                        carEl.className = `map-car ${v.type === 1 ? 'car-emergency' : 'car-regular'}`;
+                        carEl.innerHTML = `V${v.id}`;
+                        carsLayer.appendChild(carEl);
+                    }
+                    
+                    let left, top;
+                    if (locationType === 'road') {
+                        const visualPos = isReverse ? (100 - v.pos) : v.pos;
+                        if (isVertical) {
+                            left = cLeft + 15 + (index * 6);
+                            top = cTop + (visualPos / 100) * cH;
+                        } else {
+                            left = cLeft + (visualPos / 100) * cW;
+                            top = cTop + 15 + (index * 6);
+                        }
+                    } else { // Intersection
+                        left = cLeft + 10 + (index * 15);
+                        top = cTop + 10 + (index * 5);
+                    }
+
+                    carEl.style.left = left + "px";
+                    carEl.style.top = top + "px";
+                });
+            };
+
+            state.roads.forEach(r => renderVehicles(r, 'road'));
+            state.intersections.forEach(ix => renderVehicles(ix, 'ix'));
+
+            document.querySelectorAll('.map-car').forEach(car => {
+                if (!currentCarIds.includes(car.id)) car.remove();
+            });
+        }
+    </script>
+</body>
+
+</html>
